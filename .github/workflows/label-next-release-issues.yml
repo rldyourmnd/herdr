@@ -24,11 +24,11 @@ jobs:
       - name: Close issues referenced by pushed commits
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.KANGAL_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.KANGAL_GITHUB_TOKEN || github.token }}
         run: |
           set -euo pipefail
 
-          echo "Using GitHub token for $(gh api user --jq .login)."
+          echo "Processing issue references for ${GITHUB_REPOSITORY}."
 
           BEFORE="${{ github.event.before }}"
           AFTER="${{ github.sha }}"
