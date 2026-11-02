@@ -17,14 +17,25 @@ ALLOWED_TYPES = {
     "chore",
     "release",
 }
+# GitHub creates this metadata when retaining a real two-parent PR merge.
+GITHUB_MERGE_RE = re.compile(r"^Merge pull request #[1-9][0-9]* from \S+$")
 SUBJECT_RE = re.compile(r"^(?P<kind>[a-z]+)(?:\([^)]+\))?!?:\s+\S")
 
 
 def git_subjects(rev_range: str) -> list[str]:
     output = subprocess.check_output(
-        ["git", "log", "--pretty=format:%s", rev_range], text=True
+        ["git", "log", "--pretty=format:%P%x00%s", rev_range], text=True
     ).strip()
-    return [line.strip() for line in output.splitlines() if line.strip()]
+    subjects = []
+    for line in output.splitlines():
+        parents, subject = line.split("\0", 1)
+        # Parent evidence is required: an ordinary commit cannot bypass the
+        # convention by pretending to be a generated GitHub merge message.
+        if len(parents.split()) == 2 and GITHUB_MERGE_RE.fullmatch(subject):
+            continue
+        if subject.strip():
+            subjects.append(subject.strip())
+    return subjects
 
 
 def valid_subject(subject: str) -> bool:
