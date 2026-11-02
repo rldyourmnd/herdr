@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "name": "NDDev Warm Light v1",
+  "ui_colors": {
+    "panel_bg": "#fff8e7",
+    "sidebar_bg": "#f7efd8",
+    "active_row_bg": "#ecddb4",
+    "selection_bg": "#dfcc91",
+    "surface0": "#eee5cb",
+    "surface1": "#ded0ad",
+    "surface_dim": "#f7f0df",
+    "overlay0": "#897b61",
+    "overlay1": "#6d604b",
+    "text": "#3b3428",
+    "subtext0": "#75674f",
+    "accent": "#345cc4",
+    "mauve": "#7d4b8b",
+    "green": "#3c724a",
+    "yellow": "#8b6419",
+    "red": "#b33f35",
+    "blue": "#345cc4",
+    "teal": "#2f7474",
+    "peach": "#a35c26"
+  },
+  "terminal": {
+    "background": "#fff8e7",
+    "foreground": "#3b3428",
+    "cursor": "#345cc4",
+    "selection_background": "#dfcc91",
+    "selection_foreground": "#3b3428",
+    "palette": [
+      "#f7efd8",
+      "#b33f35",
+      "#3c724a",
+      "#8b6419",
+      "#345cc4",
+      "#7d4b8b",
+      "#2f7474",
+      "#6d604b",
+      "#897b61",
+      "#9d3028",
+      "#2e633c",
+      "#7a5510",
+      "#2449b0",
+      "#6b387c",
+      "#226363",
+      "#3b3428"
+    ]
+  }
+}
