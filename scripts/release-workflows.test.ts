@@ -11,6 +11,7 @@ const adminGate = release.jobs["validate-release-source"].steps[0];
 
 test("the contour release builds only the three supported assets", () => {
   const contour = load("contour-release");
+  expect(contour.on.push.tags).toEqual(["v*"]);
   expect(contour.jobs.build.strategy.matrix.include.map(({ asset }: { asset: string }) => asset)).toEqual([
     "herdr-linux-x86_64",
     "herdr-linux-aarch64",
