@@ -9,6 +9,17 @@ const preview = load("preview");
 const release = load("release");
 const adminGate = release.jobs["validate-release-source"].steps[0];
 
+test("the contour release builds only the three supported assets", () => {
+  const contour = load("contour-release");
+  expect(contour.jobs.build.strategy.matrix.include.map(({ asset }: { asset: string }) => asset)).toEqual([
+    "herdr-linux-x86_64",
+    "herdr-linux-aarch64",
+    "herdr-macos-aarch64",
+  ]);
+  expect(contour.jobs.build.if).toContain("github.repository == 'rldyourmnd/herdr'");
+  expect(contour.jobs.publish.needs).toBe("build");
+});
+
 describe("official publishing workflow boundaries", () => {
   test("publishing is tag-only while normal PR CI remains enabled", () => {
     expect(preview.on).toEqual({ push: { tags: ["preview-*"] } });

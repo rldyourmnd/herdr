@@ -61,9 +61,9 @@ setup-windows-cross *args:
 windows-lint:
     {{python}} scripts/windows_cross.py lint
 
-# Check formatting + run unit tests + Windows target lint + documentation contract tests
+# Check the native contour build, tests, and documentation contracts.
 [unix]
-check: ci windows-lint
+check: ci
     just docs-contract-test
     @echo "docs reminder: if this changes user-facing behavior, make sure the relevant release docs are updated or called out before release."
 
@@ -87,6 +87,24 @@ build:
 [windows]
 build:
     python scripts/package_windows_conpty.py build-local
+
+# Build a checked native release artifact for a supported contour target.
+[unix]
+[positional-arguments]
+contour-release output:
+    #!/bin/sh
+    set -eu
+    case "$(uname -s):$(uname -m)" in
+        Linux:x86_64) asset=herdr-linux-x86_64 ;;
+        Linux:aarch64) asset=herdr-linux-aarch64 ;;
+        Darwin:arm64) asset=herdr-macos-aarch64 ;;
+        *) printf '%s\n' 'This platform is outside the contour release matrix.' >&2; exit 1 ;;
+    esac
+    just check
+    just build
+    target/release/herdr --version
+    mkdir -p "$1"
+    install -m 0755 target/release/herdr "$1/$asset"
 
 # Non-gating full-render scaling profile for background workspaces and active panes
 bench-render-scale:
