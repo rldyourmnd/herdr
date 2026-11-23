@@ -332,7 +332,7 @@ fn agent_command() -> Command {
                 .arg(required("target", "TARGET"))
                 .arg(read_source_option(true))
                 .arg(option("lines", "N"))
-                .arg(text_ansi_format_option())
+                .arg(option("format", "FORMAT").value_parser(["text", "ansi", "json"]))
                 .arg(flag("ansi")),
         )
         .subcommand(
@@ -394,6 +394,7 @@ fn agent_command() -> Command {
                         .help("State to match; repeat for more than one state"),
                 )
                 .arg(option("timeout", "MS").help("Fail after this many milliseconds"))
+                .arg(option("settle", "MS").help("Require idle or done to persist for this many milliseconds"))
                 .after_help(
                     "Without --until, matches idle, done, or blocked. Use --until unknown explicitly when needed. Without --timeout, waits indefinitely.",
                 ),

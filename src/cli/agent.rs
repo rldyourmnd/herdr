@@ -510,6 +510,7 @@ fn agent_wait(args: &[String]) -> std::io::Result<i32> {
     };
     let mut until = Vec::new();
     let mut timeout_ms = None;
+    let mut settle_ms = 0;
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
@@ -539,6 +540,14 @@ fn agent_wait(args: &[String]) -> std::io::Result<i32> {
                 };
                 index += 2;
             }
+            "--settle" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --settle");
+                    return Ok(2);
+                };
+                settle_ms = super::parse_u64_flag("--settle", value)?;
+                index += 2;
+            }
             "help" | "--help" | "-h" => {
                 eprintln!("usage: herdr agent wait <target> [--until STATUS]... [--timeout MS]");
                 return Ok(0);
@@ -548,6 +557,9 @@ fn agent_wait(args: &[String]) -> std::io::Result<i32> {
                 return Ok(2);
             }
         }
+    }
+    if settle_ms != 0 {
+        return super::agent_settle::wait(target, until, timeout_ms, settle_ms);
     }
     super::print_response(&super::send_request(&Request {
         id: "cli:agent:wait".into(),
@@ -727,7 +739,11 @@ fn agent_wait_timeout() -> serde_json::Value {
     )
 }
 
-fn cli_agent_error(id: &str, code: &str, message: impl Into<String>) -> serde_json::Value {
+pub(super) fn cli_agent_error(
+    id: &str,
+    code: &str,
+    message: impl Into<String>,
+) -> serde_json::Value {
     serde_json::json!({
         "id": id,
         "error": { "code": code, "message": message.into() }
@@ -745,7 +761,7 @@ fn resolve_agent_target_unchecked(
     super::send_request_unchecked(&agent_get_request(target, request_id))
 }
 
-fn agent_get_request(target: &str, request_id: &str) -> Request {
+pub(super) fn agent_get_request(target: &str, request_id: &str) -> Request {
     Request {
         id: request_id.into(),
         method: Method::AgentGet(AgentTarget {
@@ -875,6 +891,7 @@ fn agent_read(args: &[String]) -> std::io::Result<i32> {
     let mut lines = None;
     let mut format = ReadFormat::Text;
     let mut strip_ansi = true;
+    let mut json = false;
 
     let mut index = 1;
     while index < args.len() {
@@ -900,11 +917,17 @@ fn agent_read(args: &[String]) -> std::io::Result<i32> {
                     eprintln!("missing value for --format");
                     return Ok(2);
                 };
-                format = super::parse_read_format(value)?;
+                json = value == "json";
+                format = if json {
+                    ReadFormat::Text
+                } else {
+                    super::parse_read_format(value)?
+                };
                 strip_ansi = !matches!(format, ReadFormat::Ansi);
                 index += 2;
             }
             "--ansi" => {
+                json = false;
                 format = ReadFormat::Ansi;
                 strip_ansi = false;
                 index += 1;
@@ -926,7 +949,11 @@ fn agent_read(args: &[String]) -> std::io::Result<i32> {
             strip_ansi,
         }),
     })?;
-    super::print_read_response(&response)
+    if json {
+        super::print_response(&response)
+    } else {
+        super::print_read_response(&response)
+    }
 }
 
 fn print_agent_help() {

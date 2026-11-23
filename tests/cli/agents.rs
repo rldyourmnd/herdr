@@ -1063,6 +1063,26 @@ fn agent_commands_work() {
     assert!(agent_read.status.success());
     assert_eq!(agent_read.stdout, pane_read.stdout);
 
+    let machine_read = run_cli(
+        &socket_path,
+        &[
+            "agent",
+            "read",
+            &root_pane_id,
+            "--source",
+            "visible",
+            "--format",
+            "json",
+        ],
+    );
+    assert!(machine_read.status.success());
+    assert!(machine_read.stdout.ends_with(b"\n"));
+    let response: serde_json::Value = serde_json::from_slice(&machine_read.stdout).unwrap();
+    assert_eq!(
+        response["result"]["read"]["text"],
+        String::from_utf8(agent_read.stdout).unwrap()
+    );
+
     let missing_read = run_cli(&socket_path, &["agent", "read", "missing"]);
     assert_eq!(missing_read.status.code(), Some(1));
     let missing_read: serde_json::Value = serde_json::from_slice(&missing_read.stderr).unwrap();
@@ -1436,7 +1456,15 @@ fn agent_wait_ignores_other_panes_and_errors_when_its_pane_closes() {
     thread::spawn(move || {
         let _ = done_tx.send(run_cli(
             &wait_socket,
-            &["agent", "wait", "worker", "--timeout", "3000"],
+            &[
+                "agent",
+                "wait",
+                "worker",
+                "--settle",
+                "60000",
+                "--timeout",
+                "3000",
+            ],
         ));
     });
     thread::sleep(Duration::from_millis(150));

@@ -53,11 +53,13 @@ impl ApiClient {
     }
 
     pub fn request_value(&self, request: &Request) -> Result<serde_json::Value, ApiClientError> {
+        self.stream(request)?.next()
+    }
+
+    pub(crate) fn stream(&self, request: &Request) -> Result<ApiStream, ApiClientError> {
         let mut stream = self.connect()?;
         write_request(&mut stream, request)?;
-
-        let mut reader = BufReader::new(stream);
-        read_json_line(&mut reader)
+        Ok(ApiStream(BufReader::new(stream)))
     }
 
     pub fn request_value_with_timeout(
@@ -122,6 +124,14 @@ impl ApiClient {
 
     fn connect(&self) -> io::Result<LocalStream> {
         crate::ipc::connect_local_stream(&self.socket_path())
+    }
+}
+
+pub(crate) struct ApiStream(BufReader<LocalStream>);
+
+impl ApiStream {
+    pub(crate) fn next(&mut self) -> Result<serde_json::Value, ApiClientError> {
+        read_json_line(&mut self.0)
     }
 }
 

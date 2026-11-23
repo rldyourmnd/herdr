@@ -53,6 +53,40 @@ fn agent_wait_exits_immediately_when_status_already_matches() {
     assert_eq!(waited_json["result"]["agent"]["agent_status"], "idle");
     assert_eq!(waited_json["result"]["agent"]["agent"], "pi");
 
+    let unsettled = run_cli(
+        &socket_path,
+        &[
+            "agent",
+            "wait",
+            &pane_id,
+            "--settle",
+            "60000",
+            "--timeout",
+            "100",
+        ],
+    );
+    assert!(!unsettled.status.success());
+    assert!(unsettled.stderr.ends_with(b"\n"));
+    let error: serde_json::Value = serde_json::from_slice(&unsettled.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "timeout");
+
+    let settled = run_cli(
+        &socket_path,
+        &[
+            "agent",
+            "wait",
+            &pane_id,
+            "--settle",
+            "25",
+            "--timeout",
+            "3000",
+        ],
+    );
+    assert!(settled.status.success());
+    assert!(settled.stdout.ends_with(b"\n"));
+    let result: serde_json::Value = serde_json::from_slice(&settled.stdout).unwrap();
+    assert_eq!(result["result"]["agent"]["agent_status"], "idle");
+
     cleanup_spawned_herdr(herdr, base);
 }
 
