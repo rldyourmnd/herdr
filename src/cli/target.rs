@@ -3,6 +3,7 @@ use std::io;
 
 use crate::api::client::{ApiClient, ConnectionTarget};
 use crate::client::endpoint::{EndpointCatalog, SavedSshEndpoint};
+use crate::remote::SavedSshApiBridge;
 
 thread_local! {
     // CLI dispatch is synchronous. Scope routing to this command, never the runtime or TUI.
@@ -96,6 +97,28 @@ pub(super) fn api_client() -> io::Result<ApiClient> {
         Ok(ApiClient::for_target(ConnectionTarget::SocketPath(
             bridge.socket_path().to_owned(),
         )))
+    })
+}
+
+pub(super) fn subscription_bridge() -> io::Result<Option<SavedSshApiBridge>> {
+    TARGET.with(|target| {
+        let target = target.borrow();
+        let Some(target) = target.as_ref() else {
+            return Ok(None);
+        };
+        #[cfg(test)]
+        if target.client_override.is_some() {
+            return Ok(None);
+        }
+        let profile = &target.profile;
+        SavedSshApiBridge::start(profile.id.as_str(), &profile.target, &profile.session, true)
+            .map(Some)
+            .map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!("machine '{}': {error}", profile.label),
+                )
+            })
     })
 }
 

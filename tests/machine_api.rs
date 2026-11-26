@@ -221,6 +221,76 @@ fn success(output: Output) -> Value {
 }
 
 #[test]
+fn machine_agent_wait_can_read_while_subscribed() {
+    let harness = Harness::new();
+    let mut child = harness
+        .command(&[
+            "--machine",
+            "mac",
+            "agent",
+            "wait",
+            "w4:p1",
+            "--settle",
+            "25",
+            "--timeout",
+            "8000",
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut subscription = None;
+    let mut snapshots = 0;
+    while snapshots < 3 && Instant::now() < deadline {
+        let (mut stream, _) = match harness.remote.accept() {
+            Ok(connection) => connection,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(5));
+                continue;
+            }
+            Err(error) => panic!("{error}"),
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut line = String::new();
+        BufReader::new(&stream).read_line(&mut line).unwrap();
+        let request: Value = serde_json::from_str(&line).unwrap();
+        let result = match request["method"].as_str().unwrap() {
+            "ping" => json!({"type":"pong","version":"test","protocol":harness.protocol}),
+            "agent.get" => {
+                assert_eq!(subscription.is_some(), snapshots > 0);
+                snapshots += 1;
+                json!({"type":"agent_info","agent":{
+                    "pane_id":"w4:p1","tab_id":"w4:t1","workspace_id":"w4","terminal_id":"t1",
+                    "agent":"claude","agent_status":"idle","focused":false,
+                    "state_change_seq":4,"revision":1
+                }})
+            }
+            "events.subscribe" => {
+                writeln!(
+                    stream,
+                    "{}",
+                    json!({"id":request["id"],"result":{"type":"ok"}})
+                )
+                .unwrap();
+                subscription = Some(stream);
+                continue;
+            }
+            method => panic!("unexpected request {method}"),
+        };
+        writeln!(stream, "{}", json!({"id":request["id"],"result":result})).unwrap();
+    }
+    if snapshots < 3 {
+        child.kill().unwrap_or_default();
+    }
+    let result = success(child.wait_with_output().unwrap());
+    assert_eq!(result["result"]["agent"]["agent_status"], "idle");
+    harness.assert_local_untouched();
+}
+
+#[test]
 fn machine_api_routes_structured_payload_and_remote_errors_without_local_fallback() {
     let harness = Harness::new();
     let server = harness.serve(

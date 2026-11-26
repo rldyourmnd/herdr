@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+use crate::api::client::{ApiClient, ConnectionTarget};
 use crate::api::schema::{
     AgentInfo, AgentStatus, EventsSubscribeParams, Method, Request, Subscription,
 };
@@ -31,7 +32,17 @@ pub(super) fn wait(
     let identity = agent_info(&initial)?;
     let pane = &identity.pane_id;
     let client = super::target::api_client()?;
-    let mut stream = client
+    // A saved-machine bridge serves one connection at a time. Keep the event
+    // stream on its own bridge so the post-subscription snapshots can proceed.
+    let subscription_bridge = super::target::subscription_bridge()?;
+    let subscription_client = subscription_bridge.as_ref().map(|bridge| {
+        ApiClient::for_target(ConnectionTarget::SocketPath(
+            bridge.socket_path().to_owned(),
+        ))
+    });
+    let mut stream = subscription_client
+        .as_ref()
+        .unwrap_or(&client)
         .stream(&Request {
             id: ID.into(),
             method: Method::EventsSubscribe(EventsSubscribeParams {
