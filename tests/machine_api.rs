@@ -282,6 +282,7 @@ fn machine_agent_wait_can_read_while_subscribed() {
         };
         writeln!(stream, "{}", json!({"id":request["id"],"result":result})).unwrap();
     }
+    drop(subscription);
     if snapshots < 3 {
         child.kill().unwrap_or_default();
     }
