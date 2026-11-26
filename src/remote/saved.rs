@@ -54,9 +54,24 @@ impl SavedSshApiBridge {
         session: &str,
         use_cached_metadata: bool,
     ) -> io::Result<Self> {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        Self::start_channel(profile_id, target, session, use_cached_metadata, "")
+    }
 
-        static NEXT_BRIDGE: AtomicUsize = AtomicUsize::new(0);
+    pub(crate) fn start_subscription(
+        profile_id: &str,
+        target: &str,
+        session: &str,
+    ) -> io::Result<Self> {
+        Self::start_channel(profile_id, target, session, true, "-events")
+    }
+
+    fn start_channel(
+        profile_id: &str,
+        target: &str,
+        session: &str,
+        use_cached_metadata: bool,
+        suffix: &str,
+    ) -> io::Result<Self> {
         let ssh = validated_saved_ssh(profile_id, target, session)?;
         let metadata_cache =
             crate::client::endpoint::SshMetadataCache::new(profile_id, target, session)?;
@@ -71,11 +86,11 @@ impl SavedSshApiBridge {
             }
         };
         let command = super::attach::cached_remote_api_command(&metadata, session);
-        let bridge_id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
         let pid = std::process::id();
+        // Rediscovery restarts the request bridge at the path held by its client.
         let path = crate::platform::remote_bridge_endpoint_path(
-            &format!("herdr-api-ssh-{pid}-{bridge_id}-{profile_id}.sock"),
-            &format!("herdr-api-{pid}-{bridge_id}-{}.sock", &profile_id[..16]),
+            &format!("herdr-api-ssh-{pid}-{profile_id}{suffix}.sock"),
+            &format!("herdr-api-{pid}-{}{suffix}.sock", &profile_id[..16]),
         );
         let bridge = SshStdioBridge::start_command(
             target.to_owned(),

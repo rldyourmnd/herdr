@@ -111,14 +111,18 @@ pub(super) fn subscription_bridge() -> io::Result<Option<SavedSshApiBridge>> {
             return Ok(None);
         }
         let profile = &target.profile;
-        SavedSshApiBridge::start(profile.id.as_str(), &profile.target, &profile.session, true)
-            .map(Some)
-            .map_err(|error| {
-                io::Error::new(
-                    error.kind(),
-                    format!("machine '{}': {error}", profile.label),
-                )
-            })
+        SavedSshApiBridge::start_subscription(
+            profile.id.as_str(),
+            &profile.target,
+            &profile.session,
+        )
+        .map(Some)
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("machine '{}': {error}", profile.label),
+            )
+        })
     })
 }
 
