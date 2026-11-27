@@ -73,13 +73,83 @@ pub(crate) fn run() {
     }
 }
 
-/// Runs [`run`] and exits on SIGINT, SIGTERM or SIGHUP. A process that already
-/// owns a termination handler keeps it; its next start prunes what it leaves.
+/// Runs [`run`] on SIGTERM, SIGHUP or SIGINT, then ends the process by the same
+/// signal. Only signals at their default action are taken: an ignored signal stays
+/// ignored and an existing handler stays in place; the next start prunes what such
+/// a process leaves.
+#[cfg(unix)]
 pub(crate) fn exit_on_termination() {
-    let _ = ctrlc::try_set_handler(|| {
-        run();
-        std::process::exit(130);
+    use std::io::Read as _;
+    use std::os::fd::FromRawFd as _;
+    use std::sync::Once;
+
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let mut fds = [0; 2];
+        if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+            return;
+        }
+        unsafe {
+            libc::fcntl(fds[0], libc::F_SETFD, libc::FD_CLOEXEC);
+            libc::fcntl(fds[1], libc::F_SETFD, libc::FD_CLOEXEC);
+        }
+        SIGNAL_PIPE.store(fds[1], std::sync::atomic::Ordering::Release);
+        let mut taken = false;
+        for signal in [libc::SIGTERM, libc::SIGHUP, libc::SIGINT] {
+            taken |= take_default_signal(signal);
+        }
+        if !taken {
+            return;
+        }
+        let mut reader = unsafe { std::fs::File::from_raw_fd(fds[0]) };
+        let _ = std::thread::Builder::new()
+            .name("ssh-cleanup".into())
+            .spawn(move || {
+                let mut signal = [0u8];
+                if reader.read_exact(&mut signal).is_ok() {
+                    run();
+                    unsafe {
+                        libc::signal(libc::c_int::from(signal[0]), libc::SIG_DFL);
+                        libc::raise(libc::c_int::from(signal[0]));
+                    }
+                    std::process::exit(128 + i32::from(signal[0]));
+                }
+            });
     });
+}
+
+#[cfg(not(unix))]
+pub(crate) fn exit_on_termination() {}
+
+#[cfg(unix)]
+static SIGNAL_PIPE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+#[cfg(unix)]
+extern "C" fn forward_signal(signal: libc::c_int) {
+    let fd = SIGNAL_PIPE.load(std::sync::atomic::Ordering::Acquire);
+    let byte = signal as u8;
+    // SAFETY: write is async-signal-safe; a failed write leaves the default exit to a second signal.
+    unsafe {
+        libc::write(fd, (&raw const byte).cast(), 1);
+    }
+}
+
+/// Installs [`forward_signal`] for `signal` only when its action is the default.
+#[cfg(unix)]
+fn take_default_signal(signal: libc::c_int) -> bool {
+    unsafe {
+        let mut current: libc::sigaction = std::mem::zeroed();
+        if libc::sigaction(signal, std::ptr::null(), &mut current) != 0
+            || current.sa_sigaction != libc::SIG_DFL
+        {
+            return false;
+        }
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = forward_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
+        action.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut action.sa_mask);
+        libc::sigaction(signal, &action, std::ptr::null_mut()) == 0
+    }
 }
 
 /// Removes `herdr-ssh-<pid>-<n>` folders in `base` that belong to this user and
@@ -174,6 +244,24 @@ mod tests {
         assert!(link.symlink_metadata().is_ok());
         assert!(target.exists());
         std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_signals_at_their_default_action_are_taken() {
+        unsafe {
+            libc::signal(libc::SIGUSR1, libc::SIG_IGN);
+            assert!(!take_default_signal(libc::SIGUSR1));
+            let mut current: libc::sigaction = std::mem::zeroed();
+            libc::sigaction(libc::SIGUSR1, std::ptr::null(), &mut current);
+            assert_eq!(current.sa_sigaction, libc::SIG_IGN);
+
+            libc::signal(libc::SIGUSR1, libc::SIG_DFL);
+            assert!(take_default_signal(libc::SIGUSR1));
+            libc::sigaction(libc::SIGUSR1, std::ptr::null(), &mut current);
+            assert_ne!(current.sa_sigaction, libc::SIG_DFL);
+            libc::signal(libc::SIGUSR1, libc::SIG_DFL);
+        }
     }
 
     #[test]
