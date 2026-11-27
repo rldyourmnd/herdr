@@ -697,9 +697,17 @@ struct ManagedSshConfig {
 
 struct ManagedSshConfigDirectory(PathBuf);
 
+impl ManagedSshConfigDirectory {
+    fn new(path: PathBuf) -> Self {
+        super::cleanup::register_directory(&path);
+        Self(path)
+    }
+}
+
 impl Drop for ManagedSshConfigDirectory {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
+        super::cleanup::unregister_directory(&self.0);
     }
 }
 
@@ -2948,8 +2956,10 @@ fn write_managed_ssh_config(target: &str) -> io::Result<ManagedSshConfig> {
         None
     };
 
-    let dir = crate::platform::create_remote_ssh_config_dir(SSH_CONTROL_SOCKET_NAME)?;
-    let path = dir.join("config");
+    let dir = ManagedSshConfigDirectory::new(crate::platform::create_remote_ssh_config_dir(
+        SSH_CONTROL_SOCKET_NAME,
+    )?);
+    let path = dir.0.join("config");
     let mut contents = String::new();
     if let Some(include) = ssh_user_config_include(paths.user_config.as_deref()) {
         contents.push_str(&format!("Include {include}\n"));
@@ -2968,15 +2978,13 @@ fn write_managed_ssh_config(target: &str) -> io::Result<ManagedSshConfig> {
         let mut file = crate::platform::create_remote_ssh_config_file(&path)?;
         file.write_all(contents.as_bytes())
     })();
-    if let Err(err) = write_result {
-        let _ = fs::remove_dir_all(&dir);
-        return Err(err);
-    }
+    // On error the directory guard removes the partial folder.
+    write_result?;
     Ok(ManagedSshConfig {
         options: ManagedSshOptions {
             config_path: path,
             control_path,
-            _directory: Arc::new(ManagedSshConfigDirectory(dir)),
+            _directory: Arc::new(dir),
         },
     })
 }
@@ -3038,6 +3046,27 @@ pub(crate) fn bridge_upload_cancellation_for_test(
     }
 }
 
+/// Asks Linux to send SIGTERM to the child when the spawning thread ends, and
+/// fails the spawn when the parent is already gone.
+#[cfg(target_os = "linux")]
+fn end_with_parent(command: &mut Command) {
+    use std::os::unix::process::CommandExt as _;
+
+    let parent = std::process::id() as libc::pid_t;
+    // SAFETY: the hook calls only async-signal-safe functions.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if libc::getppid() != parent {
+                return Err(io::Error::from_raw_os_error(libc::ESRCH));
+            }
+            Ok(())
+        });
+    }
+}
+
 fn bridge_connection(
     mut stream: crate::ipc::LocalStream,
     target: &str,
@@ -3063,10 +3092,14 @@ fn bridge_connection(
         } else {
             Stdio::inherit()
         });
+    // This thread waits for the child, so the child also ends if Herdr is killed.
+    #[cfg(target_os = "linux")]
+    end_with_parent(&mut command);
 
     let mut child = command
         .spawn()
         .map_err(|err| io::Error::new(err.kind(), format!("failed to start ssh bridge: {err}")))?;
+    let _stop_on_exit = super::cleanup::ChildGuard::new(child.id());
     let mut child_stdin = match child.stdin.take() {
         Some(stdin) => stdin,
         None => return terminate_bridge_child(child, "ssh bridge stdin missing"),

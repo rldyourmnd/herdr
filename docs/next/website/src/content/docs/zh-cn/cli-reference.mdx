@@ -376,7 +376,7 @@ herdr pane wait-output <pane_id> (--match <text> | --regex <pattern>) [--source 
 
 超时或 `agent_prompt_stalled` 并不代表未发送提示。重试前请先检查智能体。
 
-`pane wait-output` 和 `agent wait` 在省略 `--timeout` 时会无限等待。对于 `agent prompt --wait`，观察到活动后，或提示开始时已处于 `working`，等待稳定状态的过程不会超时；如果提示从 non-working 状态开始且未观察到活动，五秒后仍会返回 `agent_prompt_stalled`。超时或服务器错误以 JSON 写到 stderr,退出状态为 1。CLI 用法错误的退出状态为 2。
+`pane wait-output` 在省略 `--timeout` 时会无限等待；`agent wait` 在一小时后以 `timeout` 失败。目标窗格或智能体消失时，`agent wait` 立即返回 `agent_not_running`；启动它的进程退出时，它以 `caller_exited` 结束。对于 `agent prompt --wait`，观察到活动后，或提示开始时已处于 `working`，等待稳定状态的过程不会超时；如果提示从 non-working 状态开始且未观察到活动，五秒后仍会返回 `agent_prompt_stalled`。超时或服务器错误以 JSON 写到 stderr,退出状态为 1。CLI 用法错误的退出状态为 2。
 
 ## 集成
 

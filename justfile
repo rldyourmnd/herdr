@@ -3,8 +3,8 @@ set windows-shell := ["cmd.exe", "/d", "/s", "/c"]
 
 python := if os() == "windows" { "python" } else { "python3" }
 
-# Run tests
-test:
+# Build, lint and run the tests
+test: lint
     cargo nextest run --locked --status-level fail --final-status-level fail --failure-output final --success-output never
     just maintenance-test
     just ui-hot-path-architecture-test
@@ -61,9 +61,11 @@ setup-windows-cross *args:
 windows-lint:
     {{python}} scripts/windows_cross.py lint
 
-# Check the native contour build, tests, and documentation contracts.
+# Every check that needs no build: formatting and the documentation contracts. The contour runs
+# `just check` before each push on a machine that does not build; `just test` holds the rest.
 [unix]
-check: ci
+check:
+    cargo fmt --check
     just docs-contract-test
     @echo "docs reminder: if this changes user-facing behavior, make sure the relevant release docs are updated or called out before release."
 
@@ -101,6 +103,7 @@ contour-release output:
         *) printf '%s\n' 'This platform is outside the contour release matrix.' >&2; exit 1 ;;
     esac
     just check
+    just test
     just build
     target/release/herdr --version
     mkdir -p "$1"

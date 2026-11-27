@@ -232,3 +232,62 @@ fn agent_wait_exits_when_done_status_matches() {
 
     cleanup_spawned_herdr(herdr, base);
 }
+
+#[test]
+fn agent_wait_ends_with_caller_exited_when_its_caller_exits() {
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let socket_path = runtime_dir.join("herdr.sock");
+
+    let herdr = spawn_herdr(&config_home, &runtime_dir, &socket_path);
+    wait_for_socket(&socket_path, Duration::from_secs(5));
+
+    let created = send_request(
+        &socket_path,
+        &format!(
+            r#"{{"id":"req_cli_caller_1","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            base.display()
+        ),
+    );
+    let pane_id = created["result"]["root_pane"]["pane_id"].as_str().unwrap();
+    let reported = send_request(
+        &socket_path,
+        &format!(
+            r#"{{"id":"req_cli_caller_2","method":"pane.report_agent","params":{{"pane_id":"{}","source":"custom:test","agent":"pi","state":"working"}}}}"#,
+            pane_id
+        ),
+    );
+    assert_eq!(reported["result"]["type"], "ok");
+
+    // The shell is the caller: it starts the wait, lives long enough for the wait to see it,
+    // and exits while the wait still runs.
+    let error_path = base.join("wait.err");
+    let caller = Command::new("sh")
+        .arg("-c")
+        .arg(r#""$0" agent wait "$1" --until idle --timeout 60000 >/dev/null 2>"$2" & sleep 2"#)
+        .arg(env!("CARGO_BIN_EXE_herdr"))
+        .arg(pane_id)
+        .arg(&error_path)
+        .env("HERDR_SOCKET_PATH", &socket_path)
+        .status()
+        .unwrap();
+    assert!(caller.success());
+
+    let started = std::time::Instant::now();
+    let error = loop {
+        let text = std::fs::read_to_string(&error_path).unwrap_or_default();
+        if text.ends_with('\n') {
+            break text;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the wait outlived its caller"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let error: serde_json::Value = serde_json::from_str(&error).unwrap();
+    assert_eq!(error["error"]["code"], "caller_exited");
+
+    cleanup_spawned_herdr(herdr, base);
+}

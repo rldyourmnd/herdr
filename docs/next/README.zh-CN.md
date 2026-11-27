@@ -76,8 +76,8 @@ git clone https://github.com/herdrdev/herdr
 cd herdr
 cargo build --release
 
-just test        # 单元测试
-just check       # 格式检查、测试和维护性检查
+just test        # lint、测试和维护性检查
+just check       # 格式检查和文档检查，无需构建
 ```
 
 ## 许可证

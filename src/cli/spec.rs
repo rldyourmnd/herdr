@@ -396,7 +396,7 @@ fn agent_command() -> Command {
                 .arg(option("timeout", "MS").help("Fail after this many milliseconds"))
                 .arg(option("settle", "MS").help("Require idle or done to persist for this many milliseconds"))
                 .after_help(
-                    "Without --until, matches idle, done, or blocked. Use --until unknown explicitly when needed. Without --timeout, waits indefinitely.",
+                    "Without --until, matches idle, done, or blocked. Use --until unknown explicitly when needed. Without --timeout, fails after one hour. A gone target returns agent_not_running at once, and the wait ends with caller_exited when the process that started it exits.",
                 ),
         )
         .subcommand(
