@@ -31,6 +31,8 @@ pub(super) fn maybe_run(args: &[String]) -> Option<io::Result<super::CommandOutc
         Ok(None) => return None,
         Err(error) => return Some(usage_error(error)),
     };
+    // A termination signal would otherwise skip the SSH folder and child cleanup.
+    crate::remote::exit_on_termination();
     Some((|| {
         if let Err(error) = validate_machine_command(&args) {
             return usage_error(error);

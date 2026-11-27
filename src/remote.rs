@@ -1,5 +1,6 @@
 mod args;
 mod attach;
+mod cleanup;
 mod host;
 mod process;
 mod restart_policy;
@@ -9,6 +10,7 @@ mod ssh_agent;
 
 pub(crate) use args::*;
 pub(crate) use attach::*;
+pub(crate) use cleanup::{exit_on_termination, run as release_ssh_resources};
 pub(crate) use host::run_remote_client_bridge;
 pub(crate) use saved::*;
 

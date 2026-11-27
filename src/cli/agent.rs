@@ -503,6 +503,40 @@ fn agent_attach(args: &[String]) -> std::io::Result<i32> {
     Ok(0)
 }
 
+/// A wait without `--timeout` still ends: one hour.
+const DEFAULT_AGENT_WAIT_TIMEOUT_MS: u64 = 60 * 60 * 1000;
+#[cfg(unix)]
+const CALLER_CHECK_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Ends the wait when the process that started it exits, so a wait never
+/// outlives its caller under PID 1. A wait started by PID 1 has no caller to watch.
+#[cfg(unix)]
+fn end_with_caller() {
+    let caller = unsafe { libc::getppid() };
+    if caller <= 1 {
+        return;
+    }
+    use std::io::Write as _;
+
+    std::thread::spawn(move || loop {
+        std::thread::sleep(CALLER_CHECK_INTERVAL);
+        if unsafe { libc::getppid() } != caller {
+            crate::remote::release_ssh_resources();
+            // The caller's pipes may be closed: a failed write must not stop the exit.
+            let response = cli_agent_error(
+                "cli:agent:wait",
+                "caller_exited",
+                "the process that started the wait has exited",
+            );
+            let _ = writeln!(std::io::stderr(), "{response}");
+            std::process::exit(1);
+        }
+    });
+}
+
+#[cfg(not(unix))]
+fn end_with_caller() {}
+
 fn agent_wait(args: &[String]) -> std::io::Result<i32> {
     let Some(target) = args.first() else {
         eprintln!("usage: herdr agent wait <target> [--until STATUS]... [--timeout MS]");
@@ -558,6 +592,8 @@ fn agent_wait(args: &[String]) -> std::io::Result<i32> {
             }
         }
     }
+    let timeout_ms = Some(timeout_ms.unwrap_or(DEFAULT_AGENT_WAIT_TIMEOUT_MS));
+    end_with_caller();
     if settle_ms != 0 {
         return super::agent_settle::wait(target, until, timeout_ms, settle_ms);
     }
