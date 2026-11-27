@@ -76,8 +76,8 @@ git clone https://github.com/herdrdev/herdr
 cd herdr
 cargo build --release
 
-just test        # unit tests
-just check       # formatting, tests, and maintenance checks
+just test        # lint, tests, and maintenance checks
+just check       # formatting and documentation checks, no build
 ```
 
 ## license

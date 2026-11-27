@@ -134,11 +134,11 @@ After Can confirms the change is integrated, update the shared checkout, remove 
 Use `just` recipes by default instead of invoking cargo or scripts directly.
 
 ```bash
-just test               # cargo nextest + maintenance script tests
-just check              # formatting check + cargo nextest + maintenance script tests
+just test               # lint (fmt, clippy) + cargo nextest + maintenance script tests
+just check              # formatting check + documentation contract tests, no build
 ```
 
-Run `just check` before committing unless Can explicitly accepts narrower validation. Do not bypass failing checks; fix the failure or explain exactly why a narrower check is enough.
+Run `just check` and `just test` before committing unless Can explicitly accepts narrower validation. Do not bypass failing checks; fix the failure or explain exactly why a narrower check is enough.
 
 Windows MSVC cross-compilation from Unix requires SDK/CRT headers and libraries.
 Install `xwin` with `cargo install xwin --locked`, then run
